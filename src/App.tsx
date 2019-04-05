@@ -110,7 +110,7 @@ export const App = connect(
   }, []);
   return (
     <>
-      <div style={{ display: "flex" }}>
+      <div style={{ display: "flex", height: "100%" }}>
         <div>
           <h2 children="hello world" />
           <ul>
