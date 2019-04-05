@@ -5,6 +5,7 @@ import {
   combineReducers
 } from "redux";
 import { default as thunk } from "redux-thunk";
+import { composeWithDevTools } from "redux-devtools-extension";
 
 import { playerReducer, Player } from "./player";
 import { citiesReducer, City, CityKey } from "./city";
@@ -19,4 +20,7 @@ const reducer = combineReducers({
   cities: citiesReducer
 });
 
-export const store = createStore(reducer, applyMiddleware(thunk));
+export const store = createStore(
+  reducer,
+  composeWithDevTools(applyMiddleware(thunk))
+);

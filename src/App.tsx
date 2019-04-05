@@ -5,6 +5,8 @@ import { Root } from "./store";
 import { updateCity, addCity, City } from "./city";
 import { playerOwnCity, playerIncrementPoints, Player } from "./player";
 import { randomRange } from "./util";
+import { Map } from "./Map";
+import { Help } from "./Help";
 
 type Timeout = {
   _timeout: number;
@@ -107,25 +109,31 @@ export const App = connect(
     props.playerOwnCity(cities[0]);
   }, []);
   return (
-    <div>
-      <h2 children="hello world" />
-      <ul>
-        <p children={"Points: " + props.player.points} />
-        {cities.map(city => (
-          <li>
-            <p
-              children={[
-                `(${city.position.x.toFixed()},${city.position.y.toFixed()})`,
-                city.population,
-                city.wealth
-              ].join(", ")}
-            />
-            {props.player.cities.some(c => c === city.key) && (
-              <p children="Player owns" />
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <>
+      <div style={{ display: "flex" }}>
+        <div>
+          <h2 children="hello world" />
+          <ul>
+            <p children={"Points: " + props.player.points} />
+            {cities.map(city => (
+              <li>
+                <p
+                  children={[
+                    `(${city.position.x.toFixed()},${city.position.y.toFixed()})`,
+                    city.population,
+                    city.wealth
+                  ].join(", ")}
+                />
+                {props.player.cities.some(c => c === city.key) && (
+                  <p children="Player owns" />
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Map {...props} />
+      </div>
+      <Help {...props} />
+    </>
   );
 });
