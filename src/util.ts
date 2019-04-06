@@ -1,5 +1,16 @@
 import { City } from "./city";
 
+export const canAddCity = (cities: City[]) => {
+  return cities.length < 20;
+};
+
+export const assertCanSend = (city: City) => {
+  if (!city.wealth) {
+    console.log(city);
+    throw new Error("No wealth to trade");
+  }
+};
+
 export const assertPercentage = (percentage: number) => {
   if (0 > percentage && percentage > 1) throw new Error("invalid percentage");
 };
@@ -39,35 +50,3 @@ export const randomPositionInCircle = (distance: number) => {
 
 export const calculateMaxDistance = (cities: City[]) =>
   100 * Math.log(cities.length + 1);
-
-export type Timeout = {
-  _timeout: number;
-  going: boolean;
-  start(this: Timeout, fn: () => void, interval: number): () => void;
-  restart(this: Timeout, fn: () => void, interval: number): () => void;
-  stop(this: Timeout): void;
-};
-
-export const timer = (): Timeout => ({
-  _timeout: -Infinity,
-  going: false,
-  start: function(this, fn, interval) {
-    this.going = true;
-    this._timeout = setTimeout(() => {
-      this.going = false;
-      fn();
-    }, interval);
-    return () => {
-      clearTimeout(this._timeout);
-      this.going = false;
-    };
-  },
-  restart: function(this, fn, interval) {
-    clearTimeout(this._timeout);
-    return this.start(fn, interval);
-  },
-  stop: function(this) {
-    clearTimeout(this._timeout);
-    this.going = false;
-  }
-});

@@ -10,7 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@jsasz/jreducer": "0.0.8",
+    "@jsasz/jreducer": "^0.0.9",
     "@types/invariant": "^2.2.29",
     "@types/lodash": "^4.14.122",
     "@types/react": "^16.8.7",
@@ -26,7 +26,7 @@
     "react-redux": "^6.0.1",
     "redux": "^4.0.1",
     "redux-devtools-extension": "^2.13.8",
-    "redux-observable": "^1.0.0",
+    "redux-observable": "^1.1.0",
     "redux-thunk": "^2.3.0",
     "rxjs": "^6.4.0"
   },

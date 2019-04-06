@@ -95,6 +95,7 @@ export const Map = (props: {
     >
       <div
         style={{
+          position: "absolute",
           transform: !ref.current
             ? undefined
             : interpolateTranslate(-scrollOffset.x, -scrollOffset.y)

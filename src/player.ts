@@ -10,11 +10,13 @@ export type Player = {
   allowedMaxCityDistance: number;
 };
 
-export const [playerReducer, updatePlayer] = createReducer<Player>({
+export const [playerReducer, PLAYER_SYMBOL, updatePlayer] = createReducer<
+  Player
+>({
   cities: [],
   name: "player",
   points: 0,
-  allowedMaxCityDistance: 1000
+  allowedMaxCityDistance: 10000
 });
 
 export const playerOwnCity = (city: City) =>

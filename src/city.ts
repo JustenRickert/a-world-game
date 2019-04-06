@@ -1,9 +1,10 @@
-import { Reducer } from "redux";
+import { Reducer, AnyAction } from "redux";
 import { Omit, uniqueId, sample } from "lodash";
 import { createRecordReducer } from "@jsasz/jreducer";
 import { ThunkAction } from "redux-thunk";
+import { of, merge } from "rxjs";
 
-import { Root } from "./store";
+import { Root, AppEpic } from "./store";
 import { Player } from "./player";
 import {
   randomRange,
@@ -11,39 +12,21 @@ import {
   calculateMaxDistance,
   magnitude,
   assertPercentage,
-  assertTradeRoutesBidirectional
+  assertTradeRoutesBidirectional,
+  canAddCity,
+  plusMinusPercentage
 } from "./util";
-
-export type TraderKey = string;
-
-export type Trader = {
-  key: TraderKey;
-  wealth: number;
-  wealthRate: number;
-  wealthMax: number;
-  usualTravelTime: number;
-  currentTravelTime: number;
-  destination: {
-    toKey: CityKey;
-    fromKey: CityKey;
-  };
-};
-
-export const stubTrader = (
-  wealth: number,
-  destination: {
-    toKey: CityKey;
-    fromKey: CityKey;
-  }
-): Trader => ({
-  destination,
-  wealthRate: 0.1,
-  usualTravelTime: 10000,
-  currentTravelTime: -Infinity,
-  wealthMax: 10,
-  wealth: Math.min(10, wealth),
-  key: uniqueId("trader-")
-});
+import {
+  concat,
+  map,
+  mapTo,
+  delay,
+  switchMap,
+  switchMapTo,
+  tap
+} from "rxjs/operators";
+import { combineEpics } from "redux-observable";
+import { TraderKey } from "./trader";
 
 export type CityKey = string;
 
@@ -56,8 +39,8 @@ export type City = {
   tradeRoutes: CityKey[];
 };
 
-export const stubCity = (distance: number): City => ({
-  key: uniqueId("city-"),
+export const stubCity = (key: string, distance: number): City => ({
+  key,
   population: 25,
   position: randomPositionInCircle(
     randomRange(distance / (2 * Math.PI), distance)
@@ -67,99 +50,19 @@ export const stubCity = (distance: number): City => ({
   tradeRoutes: []
 });
 
-const playerCity = stubCity(0);
+const playerCity = stubCity(uniqueId("city-"), 0);
 
-export const [citiesReducer, updateCity] = createRecordReducer<City, CityKey>({
-  [playerCity.key]: playerCity
-});
-
-export const [tradersReducer, updateTrader] = createRecordReducer<
-  Trader,
-  TraderKey
+export const [citiesReducer, CITIES_SYMBOL, updateCity] = createRecordReducer<
+  City,
+  CityKey
 >({});
 
-const assertCanSend = (city: City) => {
-  if (!city.wealth) {
-    console.log(city);
-    throw new Error("No wealth to trade");
-  }
-};
-
-export const sendTrader = (
-  key: TraderKey,
-  travelTime: number
-): ThunkAction<any, Root, any, any> => (dispatch, getState) => {
-  const { traders: tradersRecord, cities: citiesRecord } = getState();
-  const trader = tradersRecord[key];
-  const newFromCity = citiesRecord[trader.destination.toKey];
-  const newToCity = citiesRecord[sample(newFromCity.tradeRoutes)!];
-  assertTradeRoutesBidirectional(newFromCity, newToCity);
-  dispatch(
-    updateCity(newFromCity.key, city => ({
-      ...city,
-      wealth: city.wealth + trader.wealthRate * trader.wealth
-    }))
-  );
-  dispatch(
-    updateTrader(key, trader => ({
-      ...trader,
-      destination: {
-        fromKey: newFromCity.key,
-        toKey: newToCity.key
-      },
-      currentTravelTime: travelTime,
-      wealth: Math.min(trader.wealthMax, newFromCity.wealth)
-    }))
-  );
-};
-
-const sendNewTrader = (
-  fromKey: CityKey,
-  toKey: CityKey
-): ThunkAction<any, Root, any, any> => (dispatch, getState) => {
-  const { cities: citiesRecord } = getState();
-  const fromCity = citiesRecord[fromKey];
-  assertCanSend(fromCity);
-  assertTradeRoutesBidirectional(citiesRecord[fromKey], citiesRecord[toKey]);
-  const trader = stubTrader(fromCity.wealth, { toKey, fromKey });
-  dispatch(updateTrader(trader.key, trader));
-  dispatch(
-    updateCity(fromKey, city => ({
-      ...city,
-      wealth: city.wealth - trader.wealth
-    }))
-  );
-};
-
-export const maybeSendNewTrader = (): ThunkAction<any, Root, any, any> => (
-  dispatch,
-  getState
-) => {
-  const { cities: citiesRecord, traders: tradersRecord } = getState();
-  const cities = Object.values(citiesRecord);
-  const traders = Object.values(tradersRecord);
-  const totalTradeRoutes = cities.reduce(
-    (sum, c) => sum + c.tradeRoutes.length,
-    0
-  );
-
-  if (cities.length > 2) {
-    if (totalTradeRoutes < (1 / 5) * cities.length ** 2) {
-      const fromCity = sample(Object.keys(citiesRecord))!;
-      const toCity = sample(
-        Object.keys(citiesRecord).filter(key => key !== fromCity)
-      )!;
-      dispatch(addTradeRoute(fromCity, toCity));
-    }
-    if (totalTradeRoutes && traders.length < (1 / 4) * cities.length ** 2) {
-      const fromCity = sample(cities.filter(c => c.tradeRoutes.length))!;
-      const toCity = sample(fromCity.tradeRoutes)!;
-      if (fromCity.wealth) {
-        dispatch(sendNewTrader(fromCity.key, toCity));
-      }
-    }
-  }
-};
+type CityThunk = ThunkAction<
+  any,
+  Root,
+  any,
+  { type: "START_CITY_INCREMENT"; key: CityKey } | { type: "CREATE_CITY" }
+>;
 
 export const addTradeRoute = (
   fromKey: CityKey,
@@ -173,39 +76,72 @@ export const addTradeRoute = (
   );
 };
 
-export const addCity = (): ThunkAction<any, Root, any, any> => (
-  dispatch,
-  getState
-) => {
+export const addCity = (cityKey: string): CityThunk => (dispatch, getState) => {
   const { cities: citiesRecord, player } = getState();
   const cities = Object.values(citiesRecord);
   const maxDistance = calculateMaxDistance(cities);
-  const city = stubCity(maxDistance);
-  if (magnitude(city.position) < player.allowedMaxCityDistance) {
-    dispatch(updateCity(city.key, city));
-  }
+  const city = stubCity(cityKey, maxDistance);
+  dispatch(updateCity(city.key, city));
+  dispatch({ type: "START_CITY_INCREMENT", key: cityKey });
+  dispatch({ type: "CREATE_CITY" });
 };
 
-export const addTechKnowledge = (key: string, amount: number) =>
-  updateCity(key, city => ({
-    ...city,
-    techKnowledge: city.techKnowledge + amount
-  }));
-
-export const growCityWealth = (key: string, percentage: number) => {
+export const growCityWealth = (key: string, percentage: number): CityThunk => (
+  dispatch,
+  getState
+) => {
   assertPercentage(percentage);
-  return updateCity(key, city => {
-    return {
+  dispatch(
+    updateCity(key, city => ({
       ...city,
       wealth: city.wealth * (1 + percentage) || 1
-    };
-  });
+    }))
+  );
+  dispatch({ type: "START_CITY_INCREMENT", key });
 };
 
-export const growCity = (key: string, percentage: number) => {
-  assertPercentage(percentage);
-  return updateCity(key, city => ({
-    ...city,
-    population: city.population * (1 + percentage)
-  }));
+export const createCityEpic: AppEpic<"CREATE_CITY"> = (action$, state$) => {
+  return action$.ofType("CREATE_CITY").pipe(
+    switchMap(q => {
+      return of(q).pipe(
+        delay(plusMinusPercentage(3000, 0.5)),
+        switchMap(() => {
+          const cityKey = uniqueId("city-");
+          const { cities: citiesRecord } = state$.value;
+          return of(addCity(cityKey) as any);
+        })
+      );
+    })
+  );
 };
+
+export const incrementCityEpic: AppEpic<"START_CITY_INCREMENT"> = action$ => {
+  return action$
+    .ofType<{ type: "START_CITY_INCREMENT"; key: string }>(
+      "START_CITY_INCREMENT"
+    )
+    .pipe(
+      switchMap(({ key }) =>
+        of(key).pipe(
+          delay(plusMinusPercentage(1000, 0.25)),
+          switchMap(key => of(growCityWealth(key, 0.01) as any))
+        )
+      )
+    );
+};
+
+// export const testEpic: AppEpic = (action$, state$) => {
+//   return action$.pipe(
+//     tap(console.log),
+//     switchMapTo(of())
+//   );
+// };
+
+export const cityEpics = combineEpics(incrementCityEpic, createCityEpic);
+
+// export const individualTraderEpic: AppEpic<"START_CITY"> = action$ => {
+//   console.log("INDIVIDUAL");
+//   return action$
+//     .ofType<{ type: "START_TRADER"; key: string }>("START_TRADER")
+//     .pipe(map(a => sendTrader(a.key, 1000) as any));
+// };
